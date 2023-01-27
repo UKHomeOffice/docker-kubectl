@@ -1,0 +1,65 @@
+---
+kind: pipeline
+name: default
+type: kubernetes
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: build_docker_image
+  pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+  commands:
+  - /usr/local/bin/wait
+  - docker build -t kubectl:$${DRONE_COMMIT_SHA} .
+  when:
+    event:
+    - push
+    - tag
+
+- name: image_to_quay
+  pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+  commands:
+  - docker login -u="ukhomeofficedigital+kubectl" -p=$${DOCKER_PASSWORD} quay.io
+  - docker tag kubectl:$${DRONE_COMMIT_SHA} quay.io/ukhomeofficedigital/kubectl:$${DRONE_COMMIT_SHA}
+  - docker tag kubectl:$${DRONE_COMMIT_SHA} quay.io/ukhomeofficedigital/kubectl:latest
+  - docker push quay.io/ukhomeofficedigital/kubectl:$${DRONE_COMMIT_SHA}
+  - docker push quay.io/ukhomeofficedigital/kubectl:latest
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  when:
+    branch:
+    - master
+    event:
+    - push
+
+- name: tagged_image_to_quay
+  pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+  commands:
+  - docker login -u="ukhomeofficedigital+kubectl" -p=$${DOCKER_PASSWORD} quay.io
+  - docker tag kubectl:$${DRONE_COMMIT_SHA} quay.io/ukhomeofficedigital/kubectl:$${DRONE_TAG}
+  - docker tag kubectl:$${DRONE_COMMIT_SHA} quay.io/ukhomeofficedigital/kubectl:latest
+  - docker push quay.io/ukhomeofficedigital/kubectl:$${DRONE_TAG}
+  - docker push quay.io/ukhomeofficedigital/kubectl:latest
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  when:
+    event:
+    - tag
+
+services:
+- name: docker
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind:latest
+
+- name: anchore-submission-server
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/anchore-submission:latest
+  pull: always
+  commands:
+    - /run.sh server
+
